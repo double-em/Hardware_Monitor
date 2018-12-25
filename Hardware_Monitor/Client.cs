@@ -13,6 +13,8 @@ namespace Hardware_Monitor
     public class Client : ConnectionHandler
     {
         bool connectionLive;
+        string packetRecieved = "";
+        int samePacket = 0;
 
         public Client(IPAddress ipaddress, int port) : base(ipaddress, port)
         {
@@ -42,6 +44,12 @@ namespace Hardware_Monitor
                             try
                             {
                                 UpdateStats();
+                                if (samePacket >= 3)
+                                {
+                                    Console.CursorTop += 1;
+                                    Console.CursorLeft = 0;
+                                    Console.WriteLine("Recieved the same packet: " + samePacket + " times!");
+                                }
                             }
                             catch (SocketException)
                             {
@@ -122,7 +130,14 @@ namespace Hardware_Monitor
             int received = ConnectionSocket.Receive(recievedBuffer);
             byte[] data = new byte[received];
             Array.Copy(recievedBuffer, data, received);
-            string[] stats = Encoding.ASCII.GetString(data).Split(',');
+
+            if (packetRecieved == Encoding.ASCII.GetString(data))
+            {
+                samePacket++;
+            }
+            else samePacket = 0;
+            packetRecieved = Encoding.ASCII.GetString(data);
+            string[] stats = packetRecieved.Split(',');
 
             //On some connecton closes, it will still go through to this? That's why there is a if - statement.
             if (stats.Length == 3)
