@@ -9,30 +9,18 @@ using System.Threading.Tasks;
 
 namespace Hardware_Monitor
 {
-    public class Server
+    public class Server : ConnectionHandler
     {
         private PerformanceCounter cpuCounter;
         private PerformanceCounter ramCounter;
 
-        public int CpuUsage { get; private set; }
-        public int RamAvailable { get; private set; }
-        public string Time { get; private set; }
-
         private byte[] _buffer = new byte[1024];
         static List<Socket> _clientSockets = new List<Socket>();
-        Socket _serverSocket;
-        IPAddress serverAddress;
-        int port;
 
-        public Server(IPAddress ipaddress, int port)
+
+        public Server(IPAddress ipaddress, int port) : base(ipaddress, port)
         {
             Console.Title = "Hardware Monitor - Server";
-
-            _serverSocket = new Socket
-                (AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-
-            serverAddress = ipaddress;
-            this.port = port;
             SetupServer();
         }
 
@@ -46,9 +34,9 @@ namespace Hardware_Monitor
             Console.WriteLine("Done!");
 
             Console.Write("Setting up communication...");
-            _serverSocket.Bind(new IPEndPoint(serverAddress, port));
-            _serverSocket.Listen(1);
-            _serverSocket.BeginAccept(new AsyncCallback(AcceptCallback), null);
+            ConnectionSocket.Bind(new IPEndPoint(ServerAddress, Port));
+            ConnectionSocket.Listen(1);
+            ConnectionSocket.BeginAccept(new AsyncCallback(AcceptCallback), null);
             Console.WriteLine("Done!");
 
             Console.WriteLine("\nReady!\n");
@@ -120,39 +108,52 @@ namespace Hardware_Monitor
 
         private void AcceptCallback(IAsyncResult ar)
         {
-            Socket socket = _serverSocket.EndAccept(ar);
+            Socket socket = ConnectionSocket.EndAccept(ar);
             _clientSockets.Add(socket);
-            
+
+            Console.CursorTop += 1;
             Console.CursorLeft = 0;
             Console.WriteLine("Client Connected: " + socket.RemoteEndPoint);
-            Console.CursorTop += 1;
 
             socket.BeginReceive(_buffer, 0, _buffer.Length, SocketFlags.None, new AsyncCallback(ReceiveCallback), socket);
-            _serverSocket.BeginAccept(new AsyncCallback(AcceptCallback), null);
+            ConnectionSocket.BeginAccept(new AsyncCallback(AcceptCallback), null);
         }
 
         private void ReceiveCallback(IAsyncResult ar)
         {
             Socket socket = (Socket)ar.AsyncState;
-            int received = socket.EndReceive(ar);
-            byte[] dataBuff = new byte[received];
-            Array.Copy(_buffer, dataBuff, received);
-
-            string text = Encoding.ASCII.GetString(dataBuff);
-
-            string response = string.Empty;
-            if (text.ToLower() != "get stats")
+            try
             {
-                response = "Invalid Request";
+                int received = 0;
+                received = socket.EndReceive(ar);
+
+                byte[] dataBuff = new byte[received];
+                Array.Copy(_buffer, dataBuff, received);
+
+                string text = Encoding.ASCII.GetString(dataBuff);
+
+                string response = string.Empty;
+                if (text.ToLower() != "get stats")
+                {
+                    response = "Invalid Request";
+                }
+                else
+                {
+                    response = Time + "," + CpuUsage + "," + RamAvailable;
+                }
+
+                byte[] data = Encoding.ASCII.GetBytes(response);
+                socket.BeginSend(data, 0, data.Length, SocketFlags.None, new AsyncCallback(SendCallback), socket);
+                socket.BeginReceive(_buffer, 0, _buffer.Length, SocketFlags.None, new AsyncCallback(ReceiveCallback),
+                    socket);
             }
-            else
+            catch (SocketException)
             {
-                response = Time + "," + CpuUsage + "," + RamAvailable;
+                Console.CursorTop += 1;
+                Console.CursorLeft = 0;
+                Console.WriteLine("Client Disconnected: " + socket.RemoteEndPoint);
             }
 
-            byte[] data = Encoding.ASCII.GetBytes(response);
-            socket.BeginSend(data, 0, data.Length, SocketFlags.None, new AsyncCallback(SendCallback), socket);
-            socket.BeginReceive(_buffer, 0, _buffer.Length, SocketFlags.None, new AsyncCallback(ReceiveCallback), socket);
         }
 
         private void SendCallback(IAsyncResult ar)

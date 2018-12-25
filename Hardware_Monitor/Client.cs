@@ -9,25 +9,11 @@ using System.Threading.Tasks;
 
 namespace Hardware_Monitor
 {
-    public class Client
+    public class Client : ConnectionHandler
     {
-        private int CpuUsage { get; set; }
-        private int RamAvailable { get; set; }
-        private string Time { get; set; }
-
-        Socket _clientSocket;
-        IPAddress serverAddress;
-        int port;
-
-        public Client(IPAddress ipaddress, int port)
+        public Client(IPAddress ipaddress, int port) : base(ipaddress, port)
         {
             Console.Title = "Hardware Monitor - Client";
-
-            _clientSocket = new Socket
-                (AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-
-            serverAddress = ipaddress;
-            this.port = port;
             SetupClient();
         }
 
@@ -50,9 +36,20 @@ namespace Hardware_Monitor
                     {
                         if (timer.Elapsed.Seconds > 0)
                         {
-                            UpdateStats();
-                            
-                            timer.Restart();
+                            try
+                            {
+                                UpdateStats();
+                            }
+                            catch (SocketException)
+                            {
+                                Console.CursorTop += 1;
+                                Console.CursorLeft = 0;
+                                Console.WriteLine("Connection lost...");
+                            }
+                            finally
+                            {
+                                timer.Restart();
+                            }
                         }
 
                         Console.SetCursorPosition(0, Console.CursorTop + 2);
@@ -109,10 +106,10 @@ namespace Hardware_Monitor
         void UpdateStats()
         {
             byte[] buffer = Encoding.ASCII.GetBytes("get stats");
-            _clientSocket.Send(buffer);
+            ConnectionSocket.Send(buffer);
 
             byte[] recievedBuffer = new byte[1024];
-            int received = _clientSocket.Receive(recievedBuffer);
+            int received = ConnectionSocket.Receive(recievedBuffer);
             byte[] data = new byte[received];
             Array.Copy(recievedBuffer, data, received);
             string[] stats = Encoding.ASCII.GetString(data).Split(',');
@@ -126,12 +123,12 @@ namespace Hardware_Monitor
         {
             Console.WriteLine("Connecting...");
             int attempts = 0;
-            while (!_clientSocket.Connected)
+            while (!ConnectionSocket.Connected)
             {
                 try
                 {
                     attempts++;
-                    _clientSocket.Connect(serverAddress, port);
+                    ConnectionSocket.Connect(ServerAddress, Port);
                 }
                 catch (SocketException)
                 {
@@ -141,7 +138,7 @@ namespace Hardware_Monitor
             }
 
             Console.Clear();
-            Console.WriteLine("Connected to " + serverAddress + ":" + port);
+            Console.WriteLine("Connected to " + ServerAddress + ":" + Port);
         }
     }
 }
