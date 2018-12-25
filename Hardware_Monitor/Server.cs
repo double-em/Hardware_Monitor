@@ -33,7 +33,7 @@ namespace Hardware_Monitor
             ramCounter = new PerformanceCounter("Memory", "Available MBytes");
             Console.WriteLine("Done!");
 
-            Console.Write("Setting up communication...");
+            Console.Write("Setting up Network Communication...");
             ConnectionSocket.Bind(new IPEndPoint(ServerAddress, Port));
             ConnectionSocket.Listen(1);
             ConnectionSocket.BeginAccept(new AsyncCallback(AcceptCallback), null);

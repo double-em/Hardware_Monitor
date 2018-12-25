@@ -5,12 +5,15 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Hardware_Monitor
 {
     public class Client : ConnectionHandler
     {
+        bool connectionLive;
+
         public Client(IPAddress ipaddress, int port) : base(ipaddress, port)
         {
             Console.Title = "Hardware Monitor - Client";
@@ -25,14 +28,14 @@ namespace Hardware_Monitor
 
         void SendLoop()
         {
-            while (true)
+            while (connectionLive)
             {
                 string consoleInput = "> ";
                 Stopwatch timer = new Stopwatch();
                 timer.Start();
                 do
                 {
-                    while (!Console.KeyAvailable)
+                    while (!Console.KeyAvailable && connectionLive)
                     {
                         if (timer.Elapsed.Seconds > 0)
                         {
@@ -45,6 +48,8 @@ namespace Hardware_Monitor
                                 Console.CursorTop += 1;
                                 Console.CursorLeft = 0;
                                 Console.WriteLine("Connection lost...");
+                                connectionLive = false;
+                                Thread.Sleep(5000);
                             }
                             finally
                             {
@@ -74,32 +79,37 @@ namespace Hardware_Monitor
                         }
                         System.Threading.Thread.Sleep(50);
                     }
-                    string key = Console.ReadKey(true).Key.ToString();
-                    switch (key)
+
+                    if (connectionLive)
                     {
-                        case "Backspace":
-                            if (consoleInput.Length > 2)
-                            {
-                                consoleInput = consoleInput.Remove(consoleInput.Length - 1);
-                            }
-                            break;
+                        string key = Console.ReadKey(true).Key.ToString();
+                        switch (key)
+                        {
+                            case "Backspace":
+                                if (consoleInput.Length > 2)
+                                {
+                                    consoleInput = consoleInput.Remove(consoleInput.Length - 1);
+                                }
+                                break;
 
-                        case "Spacebar":
-                            consoleInput += " ";
-                            break;
+                            case "Spacebar":
+                                consoleInput += " ";
+                                break;
 
-                        case "Enter":
-                            Console.CursorTop += 1;
-                            Console.CursorLeft = 0;
-                            Console.WriteLine("Command: '" + consoleInput.Remove(0, 2) + "' not found");
-                            consoleInput = "> ";
-                            break;
+                            case "Enter":
+                                Console.CursorTop += 1;
+                                Console.CursorLeft = 0;
+                                Console.WriteLine("Command: '" + consoleInput.Remove(0, 2) + "' not found");
+                                consoleInput = "> ";
+                                break;
 
-                        default:
-                            consoleInput += key.ToLower();
-                            break;
+                            default:
+                                consoleInput += key.ToLower();
+                                break;
+                        }
                     }
-                } while (true);                
+                    
+                } while (connectionLive);                
             }
         }
 
@@ -113,10 +123,14 @@ namespace Hardware_Monitor
             byte[] data = new byte[received];
             Array.Copy(recievedBuffer, data, received);
             string[] stats = Encoding.ASCII.GetString(data).Split(',');
-            Time = stats[0];
-            CpuUsage = int.Parse(stats[1]);
-            RamAvailable = int.Parse(stats[2]);
 
+            //On some connecton closes, it will still go through to this? That's why there is a if - statement.
+            if (stats.Length == 3)
+            {
+                Time = stats[0];
+                CpuUsage = int.Parse(stats[1]);
+                RamAvailable = int.Parse(stats[2]);
+            }
         }
 
         void LoopConnect()
@@ -129,6 +143,7 @@ namespace Hardware_Monitor
                 {
                     attempts++;
                     ConnectionSocket.Connect(ServerAddress, Port);
+                    connectionLive = true;
                 }
                 catch (SocketException)
                 {
